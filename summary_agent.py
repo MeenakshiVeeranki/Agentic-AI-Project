@@ -1,25 +1,44 @@
 from langchain_openai import ChatOpenAI
+from state import GraphState
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+# LLM configuration
+llm = ChatOpenAI(
+    model="gpt-4o",
+    temperature=0
+)
 
-def summary_agent(state):
-    retriever = state["vectorstore"].as_retriever(search_kwargs={"k": 5})
-    docs = retriever.invoke(
-        "overall purpose, intent, constraints, and key decisions"
-    )
+def summary_agent(state: GraphState) -> GraphState:
+    """
+    Context-Aware Summary Agent
+    """
+    chunk_summaries = []
 
-    text = "\n".join(d.page_content for d in docs)
-
-    prompt = f"""
+    for chunk in state["chunks"]:
+        prompt = f"""
 You are a Context-Aware Summary Agent.
 
+Summarize the following text while preserving:
+- intent
+- constraints
+- decisions
+
 TEXT:
-{text}
+{chunk['text']}
 
 Return a concise summary only.
 """
+        response = llm.invoke(prompt)
+        chunk_summaries.append(response.content)
 
-    summary = llm.invoke(prompt).content
+    merge_prompt = f"""
+Merge the following summaries into ONE coherent summary.
+Avoid repetition. Preserve key decisions.
 
-    # 🔑 return ONLY what this agent updates
-    return {"summary": summary}
+Summaries:
+{chunk_summaries}
+"""
+
+    final_summary = llm.invoke(merge_prompt).content
+    state["summary"] = final_summary
+
+    return state
